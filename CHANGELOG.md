@@ -2,6 +2,22 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范。
 
+## [0.2.0] - 2026-10-10
+
+### Added
+
+- IP 查询缓存：同一玩家 IP 未变化时读取缓存，不请求 API；IP 变化才重新查询。缓存持久化到 `plugins/IP_addr/ip_cache.json`。
+- `/ipinfo` 命令重复查询同一 IP 时复用缓存。
+
+### Changed
+
+- 运营商名称规范化为中文常用名（China Mobile ... → 中国移动，Chinanet → 中国电信 等），isp 为空时回退使用 llc 字段。
+
+### Fixed
+
+- 修复 API 返回 429 限流响应（`{"code":429,...}`，code 为数字）时因 JSON 类型不匹配导致服务器崩溃的问题；限流时输出友好提示。
+- 所有 JSON 字段均改为类型安全读取，异常响应不再导致未捕获异常。
+
 ## [0.1.0] - 2026-10-10
 
 ### Added
@@ -10,3 +26,4 @@
 - 支持通过 `config.json` 中的 `key` 配置 uapis.cn API Key；未配置时使用访客免费额度并在启动时提示。
 - `/ipinfo <IP或域名>` 命令：手动查询 IP 信息。
 - `/ipaddr reload` 命令：重载配置。
+

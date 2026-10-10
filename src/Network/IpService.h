@@ -30,6 +30,10 @@ public:
         int                timeoutMs,
         std::string&       errorOut
     );
+
+    // 将 API 返回的英文运营商名规范化为中文常用名（如 China Mobile ... -> 中国移动）
+    // 无法匹配或已为中文时原样返回
+    static std::string normalizeIsp(const std::string& raw);
 };
 
 } // namespace IPA

@@ -9,9 +9,11 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
 - 玩家加入服务器（登录）时，自动查询并在控制台输出：
 
   ```
-  玩家 Allen 加入游戏 IP: 1.2.3.4 运营商: 电信 地理位置: 中国 广东 深圳
+  玩家 Allen 加入游戏 IP: 211.136.192.6 运营商: 中国移动 地理位置: 中国 广东 广州
   ```
 
+- **IP 缓存优化**：同一玩家 IP 未变化时直接读取缓存（内存 + `ip_cache.json` 持久化），不请求 API；只有 IP 变化时才重新查询，节省 API 额度。
+- **运营商中文化**：自动将 API 返回的英文运营商名规范化为中文常用名，如 `China Mobile communications corporation` → `中国移动`、`Chinanet` → `中国电信`。
 - 未配置 API Key 时使用访客免费额度，服务器启动时会提示：
 
   ```
@@ -48,7 +50,16 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
 }
 ```
 
-> API Key 通过 `Authorization: Bearer <key>` 请求头传递。未配置时接口使用访客免费额度（有额度上限，建议尽快配置 key）。
+> API Key 通过 `Authorization: Bearer <key>` 请求头传递。未配置时接口使用访客免费额度（4 次/秒限流 + 总额度上限，建议尽快配置 key）。
+
+### 缓存机制
+
+插件在 `plugins/IP_addr/ip_cache.json` 维护 IP 查询缓存：
+
+- **玩家维度**：按 UUID 记录玩家上次的 IP 与查询结果。同一玩家再次进服且 IP 未变化时，直接读缓存，不请求 API（日志末尾带 `(缓存)` 标记）；IP 变化时才重新查询。
+- **IP 维度**：`/ipinfo` 重复查询同一 IP 时复用结果。
+
+缓存随服务器运行持久化，删除该文件即可清空缓存。
 
 ## 命令
 

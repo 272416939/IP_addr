@@ -2,6 +2,7 @@
 
 #include "Command/Command.h"
 #include "Config/ConfigManager.h"
+#include "Network/IpCache.h"
 #include "Network/IpService.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerConnectEvent.h"
@@ -45,18 +46,35 @@ void onPlayerConnect(ll::event::PlayerConnectEvent& event) {
     const auto& config = ConfigManager::getInstance().get();
 
     auto&       player   = event.self();
+    std::string uuid     = player.getUuid().asString();
     std::string playerIp = extractIp(event.networkIdentifier().getIPAndPort());
 
+    auto& cache = IpCache::getInstance();
+
+    auto writeLog = [&](IpInfo const& info, bool fromCache) {
+        logger.info(
+            "玩家 {} 加入游戏 IP: {} 运营商: {} 地理位置: {}{}",
+            player.getRealName(),
+            info.ip.empty() ? playerIp : info.ip,
+            info.isp.empty() ? "未知" : info.isp,
+            info.region.empty() ? "未知" : info.region,
+            fromCache ? " (缓存)" : ""
+        );
+    };
+
+    // 缓存优化：同一玩家 IP 未变化时直接读缓存，不请求 API
+    if (auto cached = cache.getForPlayer(uuid, playerIp)) {
+        writeLog(*cached, true);
+        return;
+    }
+
+    // IP 发生变化（或首次进服）：请求 API 获取新 IP 的信息
     std::string error;
     auto        info = IpService::queryIp(playerIp, config.key, config.timeoutMs, error);
     if (info) {
-        logger.info(
-            "玩家 {} 加入游戏 IP: {} 运营商: {} 地理位置: {}",
-            player.getRealName(),
-            info->ip.empty() ? playerIp : info->ip,
-            info->isp.empty() ? "未知" : info->isp,
-            info->region.empty() ? "未知" : info->region
-        );
+        cache.putForPlayer(uuid, playerIp, *info);
+        cache.save();
+        writeLog(*info, false);
     } else {
         logger.warn("玩家 {} 加入游戏 IP: {} 地理位置查询失败: {}", player.getRealName(), playerIp, error);
     }
@@ -87,6 +105,10 @@ bool Entry::load() {
         getSelf().getLogger().error("Failed to load config file!");
         return false;
     }
+
+    // 加载 IP 查询缓存（同一玩家 IP 未变化时复用，节省 API 额度）
+    IpCache::getInstance().load((configDir / "ip_cache.json").string());
+
     return true;
 }
 
@@ -119,6 +141,7 @@ bool Entry::enable() {
 
 bool Entry::disable() {
     getSelf().getLogger().debug("Disabling...");
+    IpCache::getInstance().save(); // 确保持久化缓存
     return true;
 }
 
