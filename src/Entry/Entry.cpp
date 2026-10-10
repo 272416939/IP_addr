@@ -50,9 +50,16 @@ void onPlayerConnect(ll::event::PlayerConnectEvent& event) {
         return;
     }
 
-    // IP 发生变化（或首次进服）：请求 API 获取新 IP 的信息
+    // IP 发生变化（或首次进服）：请求 API 获取新 IP 的信息（失败时按配置自动重试）
     std::string error;
-    auto        info = IpService::queryIp(playerIp, config.key, config.timeoutMs, error);
+    auto        info = IpService::queryIp(
+        playerIp,
+        config.key,
+        config.timeoutMs,
+        config.retryCount,
+        config.retryDelayMs,
+        error
+    );
     if (info) {
         db.savePlayerResult(uuid, playerIp, *info);
         writeJoinLog(player, *info, playerIp, "");

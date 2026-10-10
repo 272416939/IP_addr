@@ -23,11 +23,14 @@ struct IpInfo {
 class IpService {
 public:
     // 查询 IP / 域名信息；key 为空时使用访客免费额度
-    // 失败时返回 std::nullopt，并通过 errorOut 返回错误原因
+    // 网络波动（超时/连接失败）、限流（429）、服务器错误（5xx）将按 retryCount/retryDelayMs 指数退避重试；
+    // 确定性错误（400/401 等）不重试。全部失败时返回 std::nullopt，errorOut 为失败原因
     static std::optional<IpInfo> queryIp(
         const std::string& ipOrDomain,
         const std::string& key,
         int                timeoutMs,
+        int                retryCount,
+        int                retryDelayMs,
         std::string&       errorOut
     );
 

@@ -18,6 +18,13 @@
   "databasePath": "plugins/IP_addr/data/ip_cache.db",
 
   // IP 缓存保留天数：超过该天数未更新的记录在服务器启动时自动清理；<= 0 表示不清理
-  "cacheRetentionDays": 90
+  "cacheRetentionDays": 90,
+
+  // 查询失败时的重试次数（不含首次请求），应对网络波动造成的超时；0 表示不重试
+  // 仅对网络失败、限流(429)、服务器错误(5xx)重试；参数错误、Key 无效等确定性错误不重试
+  "retryCount": 5,
+
+  // 重试基础延迟（毫秒），指数退避：500ms、1000ms、2000ms、2000ms ...
+  "retryDelayMs": 500
 }
 

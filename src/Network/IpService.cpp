@@ -1,11 +1,14 @@
 #include "Network/IpService.h"
 
 #include "Network/HttpClient.h"
+#include "logger.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
+#include <thread>
 
 namespace IPA {
 
@@ -136,10 +139,92 @@ std::string IpService::normalizeIsp(const std::string& raw) {
     return raw; // 无法识别，原样返回
 }
 
+namespace {
+
+// 单次尝试的结果分类
+enum class AttemptResult {
+    Success,  // 查询成功（结果在 infoOut 中）
+    Retryable, // 可重试的失败（网络波动 / 限流 / 服务器错误），原因在 errorOut 中
+    Fatal,    // 确定性失败，重试无意义（参数错误 / key 无效 / 未收录），原因在 errorOut 中
+};
+
+AttemptResult processResponse(const HttpResponse& response, IpInfo& infoOut, std::string& errorOut) {
+    // 网络层失败（超时、连接失败等）——网络波动，可重试
+    if (!response.success) {
+        errorOut = "网络请求失败: " + response.error;
+        return AttemptResult::Retryable;
+    }
+
+    nlohmann::json json;
+    try {
+        json = nlohmann::json::parse(response.body);
+    } catch (const nlohmann::json::exception&) { // 包括 parse_error / type_error 等
+        // 200 响应体无法解析属于异常情况，按可重试处理
+        errorOut = "响应解析失败 (HTTP " + std::to_string(response.statusCode) + ")";
+        return AttemptResult::Retryable;
+    }
+
+    // 访客限流: {"code":429,"limit":4,"message":"Visitor rate limit exceeded"}——等待后可重试
+    if (response.statusCode == 429) {
+        errorOut = "API 请求过于频繁（访客限额 4 次/秒）";
+        return AttemptResult::Retryable;
+    }
+
+    // API 服务器内部错误——可重试
+    if (response.statusCode >= 500) {
+        errorOut = "API 服务器错误 (HTTP " + std::to_string(response.statusCode) + "): "
+                 + safeGetString(json, "message", "未知错误");
+        return AttemptResult::Retryable;
+    }
+
+    // key 无效或已失效（注意：错误响应中的 code 字段可能是数字，需类型安全读取）——重试无意义
+    if (response.statusCode == 401 || safeGetString(json, "code") == "INVALID_API_KEY") {
+        errorOut = "API Key 无效或已失效，请检查 config.json 中的 key 配置";
+        return AttemptResult::Fatal;
+    }
+
+    // 其他非 200（如 400 参数错误、404 未收录）——重试无意义
+    if (response.statusCode != 200) {
+        errorOut = "查询失败 (HTTP " + std::to_string(response.statusCode) + "): "
+                 + safeGetString(json, "message", "未知错误");
+        return AttemptResult::Fatal;
+    }
+
+    if (!json.contains("ip")) {
+        errorOut = safeGetString(json, "message", "未查询到该 IP 的信息");
+        return AttemptResult::Fatal;
+    }
+
+    IpInfo info;
+    info.ip       = safeGetString(json, "ip");
+    info.beginip  = safeGetString(json, "beginip");
+    info.endip    = safeGetString(json, "endip");
+    info.region   = safeGetString(json, "region");
+    info.asn      = safeGetString(json, "asn");
+    info.latitude  = safeGetNumber(json, "latitude");
+    info.longitude = safeGetNumber(json, "longitude");
+    info.timeZone = safeGetString(json, "time_zone");
+
+    // 运营商名称规范化为中文常用名；isp 为空时回退到 llc（网络所有者）字段
+    info.isp = IpService::normalizeIsp(safeGetString(json, "isp"));
+    if (info.isp.empty()) {
+        info.isp = IpService::normalizeIsp(safeGetString(json, "llc"));
+    }
+    info.llc = safeGetString(json, "llc");
+
+    infoOut  = std::move(info);
+    errorOut.clear();
+    return AttemptResult::Success;
+}
+
+} // namespace
+
 std::optional<IpInfo> IpService::queryIp(
     const std::string& ipOrDomain,
     const std::string& key,
     int                timeoutMs,
+    int                retryCount,
+    int                retryDelayMs,
     std::string&       errorOut
 ) {
     errorOut.clear();
@@ -155,60 +240,47 @@ std::optional<IpInfo> IpService::queryIp(
         headers["Authorization"] = "Bearer " + cleanedKey;
     }
 
-    HttpResponse response = HttpClient::get(url, headers, timeoutMs);
-    if (!response.success) {
-        errorOut = "网络请求失败: " + response.error;
-        return std::nullopt;
-    }
+    // 重试机制：应对网络波动造成的超时/失败
+    const int maxRetries = retryCount > 0 ? retryCount : 0;
+    int       attempt    = 0; // 已失败并即将重试的次数
 
-    nlohmann::json json;
-    try {
-        json = nlohmann::json::parse(response.body);
-    } catch (const nlohmann::json::exception&) { // 包括 parse_error / type_error 等
-        errorOut = "响应解析失败 (HTTP " + std::to_string(response.statusCode) + ")";
-        return std::nullopt;
-    }
+    while (true) {
+        HttpResponse response = HttpClient::get(url, headers, timeoutMs);
 
-    // 访客限流: {"code":429,"limit":4,"message":"Visitor rate limit exceeded"}
-    if (response.statusCode == 429) {
-        errorOut = "API 请求过于频繁（访客限额 4 次/秒），请稍后再试或配置 API Key";
-        return std::nullopt;
-    }
+        IpInfo      info;
+        std::string reason;
+        AttemptResult result = processResponse(response, info, reason);
 
-    // key 无效或已失效（注意：错误响应中的 code 字段可能是数字，需类型安全读取）
-    if (response.statusCode == 401 || safeGetString(json, "code") == "INVALID_API_KEY") {
-        errorOut = "API Key 无效或已失效，请检查 config.json 中的 key 配置";
-        return std::nullopt;
-    }
+        if (result == AttemptResult::Success) {
+            return info;
+        }
 
-    if (response.statusCode != 200) {
-        errorOut = "查询失败 (HTTP " + std::to_string(response.statusCode) + "): "
-                 + safeGetString(json, "message", "未知错误");
-        return std::nullopt;
-    }
+        if (result == AttemptResult::Fatal || attempt >= maxRetries) {
+            if (attempt > 0) {
+                errorOut = "重试 " + std::to_string(attempt) + " 次后仍失败: " + reason;
+            } else {
+                errorOut = reason;
+            }
+            return std::nullopt;
+        }
 
-    if (!json.contains("ip")) {
-        errorOut = safeGetString(json, "message", "未查询到该 IP 的信息");
-        return std::nullopt;
-    }
+        // 指数退避：base, 2*base, 4*base ... 封顶 4 倍基础延迟
+        int delayMs = retryDelayMs > 0 ? retryDelayMs : 500;
+        for (int i = 0; i < attempt; ++i) {
+            delayMs = std::min(delayMs * 2, (retryDelayMs > 0 ? retryDelayMs : 500) * 4);
+        }
 
-    IpInfo info;
-    info.ip       = safeGetString(json, "ip");
-    info.beginip  = safeGetString(json, "beginip");
-    info.endip    = safeGetString(json, "endip");
-    info.region   = safeGetString(json, "region");
-    info.asn      = safeGetString(json, "asn");
-    info.latitude  = safeGetNumber(json, "latitude");
-    info.longitude = safeGetNumber(json, "longitude");
-    info.timeZone = safeGetString(json, "time_zone");
-
-    // 运营商名称规范化为中文常用名；isp 为空时回退到 llc（网络所有者）字段
-    info.isp = normalizeIsp(safeGetString(json, "isp"));
-    if (info.isp.empty()) {
-        info.isp = normalizeIsp(safeGetString(json, "llc"));
+        logger.info(
+            "IP {} 查询失败（{}），{} 毫秒后进行第 {}/{} 次重试",
+            ipOrDomain,
+            reason,
+            delayMs,
+            attempt + 1,
+            maxRetries
+        );
+        std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+        ++attempt;
     }
-    info.llc = safeGetString(json, "llc");
-    return info;
 }
 
 } // namespace IPA

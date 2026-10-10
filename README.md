@@ -48,7 +48,7 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
   // 玩家加入服务器时，是否查询并在控制台输出 IP / 运营商 / 地理位置
   "enableJoinQuery": true,
 
-  // HTTP 请求超时时间（毫秒）
+  // 单次 HTTP 请求超时时间（毫秒）
   "timeoutMs": 5000,
 
   // 日志等级：-1 Off, 0 Fatal, 1 Error, 2 Warn, 3 Info, 4 Debug, 5 Trace
@@ -58,11 +58,34 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
   "databasePath": "plugins/IP_addr/data/ip_cache.db",
 
   // IP 缓存保留天数：超过该天数未更新的记录在服务器启动时自动清理；<= 0 表示不清理
-  "cacheRetentionDays": 90
+  "cacheRetentionDays": 90,
+
+  // 查询失败时的重试次数（不含首次请求），应对网络波动造成的超时；0 表示不重试
+  // 仅对网络失败、限流(429)、服务器错误(5xx)重试；参数错误、Key 无效等确定性错误不重试
+  "retryCount": 5,
+
+  // 重试基础延迟（毫秒），指数退避：500ms、1000ms、2000ms、2000ms ...
+  "retryDelayMs": 500
 }
 ```
 
 > API Key 通过 `Authorization: Bearer <key>` 请求头传递。未配置时接口使用访客免费额度（4 次/秒限流 + 总额度上限，建议尽快配置 key）。
+
+### 重试机制
+
+遇到以下情况时自动重试（默认 5 次，指数退避 500ms → 1000ms → 2000ms ... 封顶 4 倍基础延迟）：
+
+- **网络失败**：请求超时（WinHTTP 错误 12002）、连接失败、DNS 解析失败等网络波动
+- **限流 429**：访客免费额度 4 次/秒的限制，退避后自动恢复
+- **服务器错误 5xx**：API 服务端临时故障
+
+以下确定性错误**不会**重试（重试无意义），直接返回失败原因：
+
+- 400 参数错误（如非法 IP）
+- 401 API Key 无效
+- 未收录的 IP
+
+每次重试前会在日志中输出提示，全部失败后的错误信息形如 `重试 5 次后仍失败: 网络请求失败: ...`。
 
 ### 缓存机制
 

@@ -68,7 +68,14 @@ void registerCommand() {
             }
 
             std::string error;
-            auto        info = IpService::queryIp(param.ip, config.key, config.timeoutMs, error);
+            auto        info = IpService::queryIp(
+                param.ip,
+                config.key,
+                config.timeoutMs,
+                config.retryCount,
+                config.retryDelayMs,
+                error
+            );
             if (info) {
                 db.saveIpInfo(param.ip, *info);
                 printIpInfo(output, *info, param.ip, false);
