@@ -36,7 +36,7 @@ void registerCommand() {
     );
 
     ipinfoCmd.overload<IpInfoParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, IpInfoParam const& param, Command const&) {
+        [](CommandOrigin const&, CommandOutput& output, IpInfoParam const& param, Command const&) {
             const auto& config = ConfigManager::getInstance().get();
             std::string error;
             auto        info = IpService::queryIp(param.ip, config.key, config.timeoutMs, error);
@@ -70,7 +70,7 @@ void registerCommand() {
     );
 
     ipaddrCmd.overload<IpAddrParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, IpAddrParam const& param, Command const&) {
+        [](CommandOrigin const&, CommandOutput& output, IpAddrParam const& param, Command const&) {
             if (param.action == AdminAction::reload) {
                 if (ConfigManager::getInstance().reload()) {
                     const auto& config = ConfigManager::getInstance().get();
