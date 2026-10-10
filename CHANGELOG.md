@@ -2,6 +2,18 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范。
 
+## [0.3.0] - 2026-10-10
+
+### Added
+
+- 缓存存储由 JSON 文件迁移到 SQLite 数据库（`plugins/IP_addr/data/ip_cache.db`），支持 `databasePath`、`cacheRetentionDays` 配置项。
+- 内网地址免查询：玩家使用内网 IP（10.x/172.16-31.x/192.168.x/127.x/169.254.x/100.64-127.x、IPv6 环回/链路本地/ULA 等）进服时，不请求 API，运营商显示"内网地址"，地理位置显示"内网设备"。
+
+### Changed
+
+- 数据库层优化：WAL 日志模式、synchronous=NORMAL、busy_timeout、全部热点 SQL 预编译复用、两表写入使用事务、updated_at 索引、启动时自动清理过期记录。
+- ip_cache 表按 IP 去重，多个玩家共享同一 IP 只存一条记录。
+
 ## [0.2.0] - 2026-10-10
 
 ### Added
@@ -26,4 +38,5 @@
 - 支持通过 `config.json` 中的 `key` 配置 uapis.cn API Key；未配置时使用访客免费额度并在启动时提示。
 - `/ipinfo <IP或域名>` 命令：手动查询 IP 信息。
 - `/ipaddr reload` 命令：重载配置。
+
 

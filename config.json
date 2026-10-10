@@ -11,5 +11,13 @@
 
   // 日志等级，可填写数字或字符串：
   // -1/Off, 0/Fatal, 1/Error, 2/Warn, 3/Info, 4/Debug, 5/Trace
-  "logLevel": 3
+  "logLevel": 3,
+
+  // SQLite 缓存数据库路径（相对于服务器根目录）
+  // 同一玩家 IP 未变化时直接读取数据库缓存，不请求 API
+  "databasePath": "plugins/IP_addr/data/ip_cache.db",
+
+  // IP 缓存保留天数：超过该天数未更新的记录在服务器启动时自动清理；<= 0 表示不清理
+  "cacheRetentionDays": 90
 }
+

@@ -1,8 +1,9 @@
 #include "Command/Command.h"
 
 #include "Config/ConfigManager.h"
-#include "Network/IpCache.h"
+#include "Db/IpDatabase.h"
 #include "Network/IpService.h"
+#include "Network/IpUtils.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -51,11 +52,17 @@ void registerCommand() {
 
     ipinfoCmd.overload<IpInfoParam>().execute(
         [](CommandOrigin const&, CommandOutput& output, IpInfoParam const& param, Command const&) {
-            auto&       cache  = IpCache::getInstance();
+            auto&       db     = IpDatabase::getInstance();
             const auto& config = ConfigManager::getInstance().get();
 
-            // 重复查询同一 IP 时复用缓存
-            if (auto cached = cache.getForIp(param.ip)) {
+            // 内网地址：不请求 API，直接返回内网信息
+            if (IpUtils::isPrivateIp(param.ip)) {
+                printIpInfo(output, IpUtils::makePrivateIpInfo(param.ip), param.ip, false);
+                return;
+            }
+
+            // 重复查询同一 IP 时复用数据库缓存
+            if (auto cached = db.getIpInfo(param.ip)) {
                 printIpInfo(output, *cached, param.ip, true);
                 return;
             }
@@ -63,8 +70,7 @@ void registerCommand() {
             std::string error;
             auto        info = IpService::queryIp(param.ip, config.key, config.timeoutMs, error);
             if (info) {
-                cache.putForIp(param.ip, *info);
-                cache.save();
+                db.saveIpInfo(param.ip, *info);
                 printIpInfo(output, *info, param.ip, false);
             } else {
                 output.error("IP 查询失败: {}", error);

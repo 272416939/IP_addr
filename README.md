@@ -12,7 +12,13 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
   玩家 Allen 加入游戏 IP: 211.136.192.6 运营商: 中国移动 地理位置: 中国 广东 广州
   ```
 
-- **IP 缓存优化**：同一玩家 IP 未变化时直接读取缓存（内存 + `ip_cache.json` 持久化），不请求 API；只有 IP 变化时才重新查询，节省 API 额度。
+- **IP 缓存优化**：SQLite 数据库存储（`plugins/IP_addr/data/ip_cache.db`）。同一玩家 IP 未变化时直接读取数据库缓存，不请求 API；只有 IP 变化时才重新查询，节省 API 额度。
+- **内网地址免查询**：玩家使用内网 IP（如 `192.168.x.x`、`10.x.x.x`、`172.16-31.x.x`、`127.x.x.x`、IPv6 本地地址等）进服时，不请求 API，直接显示：
+
+  ```
+  玩家 Allen 加入游戏 IP: 192.168.1.100 运营商: 内网地址 地理位置: 内网设备
+  ```
+
 - **运营商中文化**：自动将 API 返回的英文运营商名规范化为中文常用名，如 `China Mobile communications corporation` → `中国移动`、`Chinanet` → `中国电信`。
 - 未配置 API Key 时使用访客免费额度，服务器启动时会提示：
 
@@ -46,7 +52,13 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
   "timeoutMs": 5000,
 
   // 日志等级：-1 Off, 0 Fatal, 1 Error, 2 Warn, 3 Info, 4 Debug, 5 Trace
-  "logLevel": 3
+  "logLevel": 3,
+
+  // SQLite 缓存数据库路径（相对于服务器根目录）
+  "databasePath": "plugins/IP_addr/data/ip_cache.db",
+
+  // IP 缓存保留天数：超过该天数未更新的记录在服务器启动时自动清理；<= 0 表示不清理
+  "cacheRetentionDays": 90
 }
 ```
 
@@ -54,12 +66,22 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
 
 ### 缓存机制
 
-插件在 `plugins/IP_addr/ip_cache.json` 维护 IP 查询缓存：
+插件使用 SQLite 数据库存储缓存（默认 `plugins/IP_addr/data/ip_cache.db`，可在配置中修改）：
 
-- **玩家维度**：按 UUID 记录玩家上次的 IP 与查询结果。同一玩家再次进服且 IP 未变化时，直接读缓存，不请求 API（日志末尾带 `(缓存)` 标记）；IP 变化时才重新查询。
-- **IP 维度**：`/ipinfo` 重复查询同一 IP 时复用结果。
+| 表 | 说明 |
+| --- | --- |
+| `ip_cache` | IP/域名 → 查询结果。多个玩家使用同一 IP 时只存一条记录 |
+| `player_ip` | 玩家 UUID → 上次的 IP。用于判断玩家 IP 是否发生变化 |
 
-缓存随服务器运行持久化，删除该文件即可清空缓存。
+工作流程：
+
+1. 玩家进服 → 若为内网地址，直接显示"内网地址 / 内网设备"，不查数据库不请求 API
+2. 查 `player_ip`：UUID 对应的 IP 与本次一致 → 从 `ip_cache` 读取详情 → **命中缓存，不请求 API**（日志末尾带 `(缓存)` 标记）
+3. IP 变化或首次进服 → 请求 API → 事务内同时更新两表
+
+数据库优化：WAL 日志模式、预编译语句复用、写入事务、`updated_at` 索引 + 启动时自动清理超过 `cacheRetentionDays` 天的记录。
+
+删除 `plugins/IP_addr/data/` 目录即可清空缓存。
 
 ## 命令
 
@@ -88,7 +110,8 @@ xmake -w -y
 src/
 ├── Entry/           # 插件入口（load/enable/disable）
 ├── Config/          # 配置管理（config.json）
-├── Network/         # WinHTTP 客户端与 IP 查询服务
+├── Db/              # SQLite 缓存数据库
+├── Network/         # WinHTTP 客户端、IP 查询服务、内网地址判断
 └── Command/         # 命令注册
 ```
 

@@ -15,6 +15,7 @@ else
 end
 
 add_requires("levibuildscript")
+add_requires("sqlite3")
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
@@ -53,9 +54,10 @@ target("IP_addr")
             { tools = { "clang_cl" } }
         )
         -- WinHTTP：用于发起 HTTPS 请求查询 IP 信息
-        add_syslinks("winhttp")
+        -- ws2_32：inet_pton 等 IP 地址解析函数
+        add_syslinks("winhttp", "ws2_32")
     end
-    add_packages("levilamina")
+    add_packages("levilamina", "sqlite3")
     set_kind("shared")
     set_languages("c++23")
     set_symbols("debug")

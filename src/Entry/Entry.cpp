@@ -2,8 +2,9 @@
 
 #include "Command/Command.h"
 #include "Config/ConfigManager.h"
-#include "Network/IpCache.h"
+#include "Db/IpDatabase.h"
 #include "Network/IpService.h"
+#include "Network/IpUtils.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerConnectEvent.h"
 #include "ll/api/mod/RegisterHelper.h"
@@ -15,30 +16,16 @@ namespace IPA {
 
 namespace {
 
-// 从 RakNet 的 "IP|端口" 字符串中提取纯 IP 地址
-std::string extractIp(std::string const& ipAndPort) {
-    std::string result = ipAndPort;
-
-    // RakNet 通常使用 '|' 分隔 IP 与端口，例如 "1.2.3.4|12345"
-    auto pipe = result.find('|');
-    if (pipe != std::string::npos) {
-        return result.substr(0, pipe);
-    }
-
-    // IPv6 可能带有方括号，例如 "[::1]:19132"
-    if (!result.empty() && result.front() == '[') {
-        auto close = result.find(']');
-        if (close != std::string::npos) {
-            return result.substr(1, close - 1);
-        }
-    }
-
-    // 若只有一个冒号，视为 "IPv4:端口"
-    if (result.find(':') != std::string::npos && result.find(':') == result.rfind(':')) {
-        return result.substr(0, result.find(':'));
-    }
-
-    return result; // 纯 IPv6 地址，原样返回
+// 输出一条玩家进服 IP 信息日志
+void writeJoinLog(Player& player, const IpInfo& info, const std::string& fallbackIp, const char* suffix) {
+    logger.info(
+        "玩家 {} 加入游戏 IP: {} 运营商: {} 地理位置: {}{}",
+        player.getRealName(),
+        info.ip.empty() ? fallbackIp : info.ip,
+        info.isp.empty() ? "未知" : info.isp,
+        info.region.empty() ? "未知" : info.region,
+        suffix
+    );
 }
 
 // 玩家连接服务器（登录阶段）时触发，此时可以拿到玩家的网络标识
@@ -47,24 +34,19 @@ void onPlayerConnect(ll::event::PlayerConnectEvent& event) {
 
     auto&       player   = event.self();
     std::string uuid     = player.getUuid().asString();
-    std::string playerIp = extractIp(event.networkIdentifier().getIPAndPort());
+    std::string playerIp = IpUtils::extractIp(event.networkIdentifier().getIPAndPort());
 
-    auto& cache = IpCache::getInstance();
+    // 内网地址：不请求 API，直接显示内网信息
+    if (IpUtils::isPrivateIp(playerIp)) {
+        writeJoinLog(player, IpUtils::makePrivateIpInfo(playerIp), playerIp, "");
+        return;
+    }
 
-    auto writeLog = [&](IpInfo const& info, bool fromCache) {
-        logger.info(
-            "玩家 {} 加入游戏 IP: {} 运营商: {} 地理位置: {}{}",
-            player.getRealName(),
-            info.ip.empty() ? playerIp : info.ip,
-            info.isp.empty() ? "未知" : info.isp,
-            info.region.empty() ? "未知" : info.region,
-            fromCache ? " (缓存)" : ""
-        );
-    };
+    auto& db = IpDatabase::getInstance();
 
-    // 缓存优化：同一玩家 IP 未变化时直接读缓存，不请求 API
-    if (auto cached = cache.getForPlayer(uuid, playerIp)) {
-        writeLog(*cached, true);
+    // 缓存：同一玩家 IP 未变化时直接读数据库，不请求 API
+    if (auto cached = db.getCachedForPlayer(uuid, playerIp)) {
+        writeJoinLog(player, *cached, playerIp, " (缓存)");
         return;
     }
 
@@ -72,9 +54,8 @@ void onPlayerConnect(ll::event::PlayerConnectEvent& event) {
     std::string error;
     auto        info = IpService::queryIp(playerIp, config.key, config.timeoutMs, error);
     if (info) {
-        cache.putForPlayer(uuid, playerIp, *info);
-        cache.save();
-        writeLog(*info, false);
+        db.savePlayerResult(uuid, playerIp, *info);
+        writeJoinLog(player, *info, playerIp, "");
     } else {
         logger.warn("玩家 {} 加入游戏 IP: {} 地理位置查询失败: {}", player.getRealName(), playerIp, error);
     }
@@ -106,8 +87,17 @@ bool Entry::load() {
         return false;
     }
 
-    // 加载 IP 查询缓存（同一玩家 IP 未变化时复用，节省 API 额度）
-    IpCache::getInstance().load((configDir / "ip_cache.json").string());
+    // 打开 SQLite 缓存数据库（失败时降级为无缓存运行，不影响 IP 查询主功能）
+    const auto& config = ConfigManager::getInstance().get();
+    auto        dbPath = std::filesystem::path(config.databasePath);
+    std::error_code ec;
+    std::filesystem::create_directories(dbPath.parent_path(), ec);
+    if (ec) {
+        getSelf().getLogger().warn("创建数据库目录失败: {} ({})", dbPath.parent_path().string(), ec.message());
+    }
+    if (!IpDatabase::getInstance().open(dbPath.string())) {
+        getSelf().getLogger().error("打开 IP 缓存数据库失败，将在无缓存模式下运行");
+    }
 
     return true;
 }
@@ -119,6 +109,12 @@ bool Entry::enable() {
 
     // 应用日志等级
     getSelf().getLogger().setLevel(static_cast<ll::io::LogLevel>(config.logLevel));
+
+    // 清理过期的 IP 缓存记录
+    IpDatabase::getInstance().cleanupExpired(config.cacheRetentionDays);
+    if (IpDatabase::getInstance().isOpen()) {
+        getSelf().getLogger().info("IP 缓存数据库就绪，当前缓存 {} 条记录", IpDatabase::getInstance().size());
+    }
 
     // 未配置 API Key 时提示当前使用免费额度
     if (config.key.empty()) {
@@ -141,7 +137,7 @@ bool Entry::enable() {
 
 bool Entry::disable() {
     getSelf().getLogger().debug("Disabling...");
-    IpCache::getInstance().save(); // 确保持久化缓存
+    IpDatabase::getInstance().close();
     return true;
 }
 
