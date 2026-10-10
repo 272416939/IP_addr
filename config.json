@@ -1,0 +1,15 @@
+{
+  // uapis.cn 的 API Key，留空则使用访客免费额度
+  // 申请地址: https://uapis.cn/console/api-keys
+  "key": "",
+
+  // 玩家加入服务器时，是否查询并在控制台输出 IP / 运营商 / 地理位置
+  "enableJoinQuery": true,
+
+  // HTTP 请求超时时间（毫秒）
+  "timeoutMs": 5000,
+
+  // 日志等级，可填写数字或字符串：
+  // -1/Off, 0/Fatal, 1/Error, 2/Warn, 3/Info, 4/Debug, 5/Trace
+  "logLevel": 3
+}

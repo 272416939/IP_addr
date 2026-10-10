@@ -1,0 +1,57 @@
+*.userprefs
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+
+# Visual Studio cache
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.db
+ipch/
+*.pdb
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.tlog
+*.vspscc
+*.vssscc
+.builds
+
+# XMake
+/.xmake/
+/build/
+
+# IDE
+/.idea/
+/.vscode/
+/.history/
+
+# AI
+/.claude/
+.zcode/
