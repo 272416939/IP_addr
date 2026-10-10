@@ -9,9 +9,9 @@ add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
 -- add_requires("levilamina x.x.x") for a specific version
 -- add_requires("levilamina develop") to use develop version
 if is_config("target_type", "server") then
-    add_requires("levilamina 26.20.7", { configs = { target_type = "server" } })
+    add_requires("levilamina 26.51.*", { configs = { target_type = "server" } })
 else
-    add_requires("levilamina 26.20.7", { configs = { target_type = "client" } })
+    add_requires("levilamina 26.51.*", { configs = { target_type = "client" } })
 end
 
 add_requires("levibuildscript")

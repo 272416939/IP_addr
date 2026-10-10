@@ -2,6 +2,13 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范。
 
+## [0.5.0] - 2026-10-10
+
+### Changed
+
+- 适配 LeviLamina 26.51.x（`add_requires("levilamina 26.51.*")`），tooth.json 依赖同步更新为 `>=26.51.0 <26.52.0`。
+- 本地 xmake 仓库的 levilamina 包定义增加了 `on_install` 补丁：为 26.51.x 自动生成头文件中「前向声明 + 容器成员」的类型补充完整包含（约 1600 个头文件），修复 clang-cl + 新版 MSVC STL 下的 incomplete type 编译错误；对存在循环依赖的 RakPeer/ShadowBanList 改用 .cpp 层面修复。
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
