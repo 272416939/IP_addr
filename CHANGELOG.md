@@ -2,6 +2,20 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范。
 
+## [0.6.0] - 2026-11-20
+
+### Changed
+
+- 适配 LeviLamina 26.60.x（`add_requires("levilamina 26.60.*")`）。
+- 包描述文件由 `tooth.json`（format 3）迁移到 `lip.toml`（format 4），与 LeviLamina 26.60.8 起的上游做法一致：依赖改为 `>=26.60.0 <26.61.0`，产物仍放置到 `mods/IP_addr/`（服务端的 `plugins/` 是指向 `mods/` 的目录联接），并新增 `preserve` 以在升级时保留 `config.json` 与 `data/` 缓存。
+- 移除 0.5.0 时期针对 26.51.x 的本地 xmake 仓库 `on_install` 头文件补丁：LeviLamina 26.60.8 已修复「前向声明 + 容器成员」引发的 incomplete type 问题，直接使用官方 [xmake-repo](https://github.com/LiteLDev/xmake-repo) 即可构建，无需任何本地补丁。
+
+### Notes
+
+- 插件源码无需改动：在 26.60.8 下构建零警告零错误，未触发任何 `MCNAPI` 标记（`[[deprecated("This API is not available...")]]`），因此不需要提交 [mcapi-requests](https://github.com/LiteLDev/mcapi-requests/issues) 申请。
+- 26.60.0 的破坏性变更（Packet 处理新增 `PacketSide` 参数、移除 `ll/api/network/packet/runtime/RuntimePacket.h`、移除 `ll::coro::InterruptableSleep`）与本插件无关——本插件只用玩家事件、命令、配置、日志与 SQLite。
+- 玩家 IP 仍取自 `NetworkIdentifier::getIPAndPort()`（LeviLamina 自加的 `LLNDAPI` 接口，非 MCNAPI）：RakNet 连接走 `getRakPeer().GetSystemAddressFromGuid`，NetherNet 连接走 LL 内部 `ll::network::NetherNetInfo` 记录的候选地址；两者都取不到时上游回退为 `127.0.0.1:65535`（26.60 服务端默认使用 NetherNet 单端口，行为与 26.51.x 一致）。
+
 ## [0.5.0] - 2026-10-10
 
 ### Changed

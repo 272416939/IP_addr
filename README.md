@@ -1,6 +1,6 @@
 # IP_addr
 
-LeviLamina 26.51.x 原生插件：玩家加入服务器时，在控制台输出玩家的 **IP 地址、运营商、地理位置**。
+LeviLamina 26.60.x 原生插件：玩家加入服务器时，在控制台输出玩家的 **IP 地址、运营商、地理位置**。
 
 IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinfo) 的 IP 查询 API。
 
@@ -31,7 +31,12 @@ IP 信息来自 [uapis.cn](https://uapis.cn/docs/api-reference/get-network-ipinf
 
 ## 安装
 
-1. 构建插件（见下文），将 `bin/IP_addr/` 目录复制到 LeviLamina 服务端的 `plugins/` 目录下。
+1. 构建插件（见下文），将 `bin/IP_addr/` 目录复制到 LeviLamina 服务端的 `plugins/` 目录下；或使用 [lip](https://levimc.org/lip/) 安装：
+
+   ```bash
+   lip install github.com/272416939/IP_addr
+   ```
+
 2. 启动服务器，会自动生成 `plugins/IP_addr/config.json`。
 3. （可选）在 `config.json` 中填写 API Key。
 
@@ -125,7 +130,9 @@ xmake -w -y
 
 构建产物位于 `bin/IP_addr/`，将其拷贝到服务端 `plugins/` 目录即可。
 
-> **关于 LeviLamina 26.51.x 的本地补丁**：26.51.x 自动生成的头文件与新版 MSVC STL 存在兼容问题（实例化默认析构函数时报 incomplete type）。本项目通过本地 xmake 仓库（`.xmake/windows/x64/repositories/levimc-repo/packages/l/levilamina/xmake.lua` 的 `on_install`）在安装 levilamina 包时自动修补约 1600 个头文件。该目录由 xmake 自动生成且被 git 忽略——若执行过 `xmake repo -u` 或删除了 `.xmake` 目录，需要重新应用此补丁（可从 git 历史或维护者处获取该文件）。
+> **关于构建环境**：本插件针对 LeviLamina 26.60.x 构建，直接使用官方 [xmake-repo](https://github.com/LiteLDev/xmake-repo)（`add_repositories("levimc-repo ...")` 由 `levibuildscript` 引入），**不需要任何本地补丁**。
+>
+> 历史说明：26.51.x 自动生成的头文件与新版 MSVC STL（14.44）+ clang-cl 存在兼容问题（为前向声明类型实例化默认析构函数时报 incomplete type，另有 `UniqueTagPtr.h`、`RakPeer.h`/`ShadowBanList.h`、`optional_ref.h` 等上游缺陷）。0.5.0 通过本地 xmake 仓库的 `on_install` 修补约 2660 个头文件绕过；LeviLamina 26.60.8 已在上游修复，自 0.6.0 起该补丁被移除，构建 26.60.x 时无需再应用。
 
 ## 开发
 

@@ -47,6 +47,9 @@ ipch/
 /.xmake/
 /build/
 
+# lip
+/.lip/
+
 # IDE
 /.idea/
 /.vscode/

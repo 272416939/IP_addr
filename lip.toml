@@ -1,0 +1,25 @@
+format = 4
+id = "github.com/272416939/IP_addr"
+version = "0.6.0"
+
+[info]
+name = "IP_addr"
+description = "玩家加入服务器时在控制台输出其 IP、运营商与地理位置（基于 uapis.cn IP 查询 API）"
+tags = ["management", "utility"]
+
+# 服务端插件。lip 的服务端工作区中 mods/ 是模组根目录，plugins/ 是指向它的目录联接，
+# 因此写入 mods/IP_addr/ 后 LeviLamina 仍能从 plugins/IP_addr/ 加载。
+[[variants.""]]
+side = "server"
+platform = "win-x64"
+# 升级/卸载时保留服主的配置与 SQLite 缓存，避免覆盖 key 与清空历史记录
+preserve = ["mods/IP_addr/config.json", "mods/IP_addr/data/"]
+
+[variants."".deps]
+"github.com/LiteLDev/LeviLamina" = ">=26.60.0 <26.61.0"
+
+# 发布 ZIP 的根目录为 IP_addr/（内含 IP_addr.dll、IP_addr.pdb、manifest.json）
+[[variants."".assets]]
+type = "zip"
+urls = ["https://{{id}}/releases/download/v{{version}}/IP_addr-{{version}}.zip"]
+place = [{ src = "IP_addr/", dest = "mods/IP_addr/" }]
